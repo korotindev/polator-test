@@ -1,96 +1,112 @@
-#pragma once
-#include <stdexcept>
-#include <string>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
 
-#include "user.hpp"
+#include "common.hpp"
 
-namespace NetworkErrors {
-  class UserNotFoundError : public std::runtime_error {
-   public:
-    using std::runtime_error::runtime_error;
-  };
-  class SenderNotFound : public std::runtime_error {
-   public:
-    using std::runtime_error::runtime_error;
-  };
-  class RecipientNotFound : public std::runtime_error {
-   public:
-    using std::runtime_error::runtime_error;
-  };
-  class CantFindSuchFollowerError : public std::runtime_error {
-   public:
-    using std::runtime_error::runtime_error;
-  };
-};  // namespace NetworkErrors
-
-class NetworkServer {
- private:
-  struct UserInfo {
-    User& user;
-    std::unordered_set<User::Login> subscribers;
-  };
-  std::unordered_map<User::Login, UserInfo> connected_;
-  std::unordered_set<User::Login> registered_;
-
+class NetworkServerUserStorage {
  public:
-  inline std::vector<User::Login> registered_users() const;
-  inline std::vector<User::Login> connected_users() const;
+  struct Info {
+    std::unordered_set<UserLogin> followers;
+    bool connected = false;
+  };
 
-  inline void register_user(User&);
-  inline void connect_user(User&);
-  inline void create_subscription(const User& folower, const User& target);
-  inline void process_message(Message msg);
+  using Storage = std::unordered_map<UserLogin, Info>;
+
+  inline bool is_registered(const UserLogin& login) const { return store_.find(login) != store_.end(); }
+
+  inline bool is_connected(const UserLogin& login) const {
+    if (auto it = store_.find(login); it != store_.end()) {
+      return it->second.connected;
+    }
+    return false;
+  }
+
+  inline void add(UserLogin login) { store_[std::move(login)] = Info{}; }
+
+  inline void connect(const UserLogin& login) { store_.at(login).connected = true; }
+
+  inline void subscribe(UserLogin follower, const UserLogin& target) {
+    store_.at(target).followers.insert(std::move(follower));
+  }
+
+  inline bool has_follower(const UserLogin& target, const UserLogin& follower) {
+    return store_.at(target).followers.count(follower) > 0;
+  }
+
+  Storage::const_iterator begin() const { return store_.begin(); }
+
+  Storage::const_iterator end() const { return store_.end(); }
+
+ private:
+  Storage store_;
 };
 
-inline std::vector<User::Login> NetworkServer::registered_users() const {
-  std::vector<User::Login> users(registered_.begin(), registered_.end());
-  return users;
-}
+class NetworkServer {
+  std::shared_ptr<INetworkBus> bus_;
+  NetworkServerUserStorage user_store_;
 
-inline std::vector<User::Login> NetworkServer::connected_users() const {
-  std::vector<User::Login> users;
-  for (auto [login, _] : connected_) {
-    users.push_back(login);
-  }
-  return users;
-}
-
-inline void NetworkServer::register_user(User& user) { registered_.insert(user.login()); }
-
-inline void NetworkServer::connect_user(User& user) {
-  if (registered_.count(user.login()) == 0) {
-    throw NetworkErrors::UserNotFoundError(user.login());
+  void validate_user_connected(const UserLogin& login) {
+    if (!user_store_.is_connected(login)) {
+      throw NetworkErrors::UserNotConnectedError(login);
+    }
   }
 
-  connected_.try_emplace(user.login(), UserInfo{user, {}});
-}
-
-inline void NetworkServer::create_subscription(const User& folower, const User& target) {
-  if (auto it = connected_.find(target.login()); it != connected_.end()) {
-    it->second.subscribers.insert(folower.login());
-  } else {
-    throw NetworkErrors::UserNotFoundError(target.login());
-  }
-}
-
-inline void NetworkServer::process_message(Message msg) {
-  auto sender_it = connected_.find(msg.from);
-  if (sender_it == connected_.end()) {
-    throw NetworkErrors::SenderNotFound(msg.from);
+  void validate_user_registered(const UserLogin& login) {
+    if (!user_store_.is_registered(login)) {
+      throw NetworkErrors::UserNotFoundError(login);
+    }
   }
 
-  if (sender_it->second.subscribers.count(msg.to) == 0) {
-    throw NetworkErrors::CantFindSuchFollowerError(msg.to);
+  void validate_message(const Message& msg) {
+    if(!user_store_.has_follower(msg.from, msg.to)) {
+      throw NetworkErrors::SubscriptionNotFoundError(msg.to + " not a follower of " + msg.from);
+    }
   }
 
-  auto recipient_it = connected_.find(msg.to);
-  if (recipient_it == connected_.end()) {
-    throw NetworkErrors::RecipientNotFound(msg.to);
+ public:
+  inline explicit NetworkServer(std::shared_ptr<INetworkBus> bus) : bus_(std::move(bus)) {}
+
+  inline void register_user(UserLogin login) {
+    if (!user_store_.is_registered(login)) {
+      user_store_.add(std::move(login));
+    }
   }
 
-  sender_it->second.user.add_message_to_feed(msg);
-  recipient_it->second.user.add_message_to_feed(msg);
+  inline void connect_user(UserLogin login) {
+    validate_user_registered(login);
+    user_store_.connect(login);
+  }
+
+  inline void subscribe(UserLogin follower, UserLogin target) {
+    validate_user_registered(target);
+    validate_user_registered(follower);
+    user_store_.subscribe(std::move(follower), target);
+  }
+
+  inline void process_message(Message msg) {
+    validate_user_connected(msg.from);
+    validate_user_connected(msg.to);
+    validate_message(msg);
+    bus_->receive_message(msg.to, msg);
+    bus_->receive_message(msg.from, msg);
+  }
+
+  inline UserList registered_users() const {
+    UserList users;
+    for (const auto& [login, _] : user_store_) {
+      users.push_back(login);
+    }
+    return users;
+  }
+
+  inline UserList connected_users() const {
+    UserList users;
+    for (const auto& [login, info] : user_store_) {
+      if (info.connected) {
+        users.push_back(login);
+      }
+    }
+    return users;
+  }
 };

@@ -3,13 +3,11 @@
 
 #include "user.hpp"
 #include "network.hpp"
-#include "network_server.hpp"
-#include "network_connection.hpp"
 
 using namespace std;
 
 namespace {
-  void print_users(ostream& out, const vector<User::Login>& users) {
+  void print_users(ostream& out, const vector<UserLogin>& users) {
     for (const auto& login : users) {
       out << login << "\n";
     }
@@ -40,24 +38,26 @@ namespace {
 }  // namespace
 
 int main() {
-  NetworkServer remote_server;
-  auto connection = make_unique<DirectCallNetworkConnection>(remote_server);
-  Network network(move(connection));
+  auto bus = make_shared<NetworkBus>();
+  NetworkServer server(bus);
+  // In real life INetwrokBus should implement communication between Network and NetworkServer
+  bus->set_server(&server);
+  Network network(bus);
 
-  User::Login luke_login = "Luke", darth_vader_login = "Darth Vader", leia_login = "Leia";
+  UserLogin luke_login = "Luke", darth_vader_login = "Darth Vader", leia_login = "Leia";
   User luke(luke_login), darth_vader(darth_vader_login), leia(leia_login);
 
-  network.register_user(luke);
-  network.register_user(darth_vader);
-  network.connect_user(darth_vader);
-  network.connect_user(luke);
+  network.register_user(luke.login());
+  network.register_user(darth_vader.login());
+  network.connect_user(&darth_vader);
+  network.connect_user(&luke);
 
   print_network_stat(cout, network);
 
-  network.create_subscription(luke, darth_vader);
+  network.subscribe(luke_login, darth_vader_login);
   network.process_message(Message{.from = darth_vader_login, .to = luke_login, .text = "Luke! I'm your father!"});
 
-  network.create_subscription(darth_vader, luke);
+  network.subscribe(darth_vader_login, luke_login);
   network.process_message(Message{.from = luke_login, .to = darth_vader_login, .text = "NOOOO!"});
 
   for(const auto& user : {darth_vader, luke, leia}) {
@@ -65,12 +65,12 @@ int main() {
     cout << "\n";
   }
 
-  network.register_user(leia);
-  network.connect_user(leia);
+  network.register_user(leia_login);
+  network.connect_user(&leia);
 
   print_network_stat(cout, network);
 
-  network.create_subscription(leia, luke);
+  network.subscribe(leia_login, luke_login);
   network.process_message(Message{.from = luke_login, .to = leia_login, .text = "I'm gonna defeat my father!"});
 
   for(const auto& user : {darth_vader, luke, leia}) {
