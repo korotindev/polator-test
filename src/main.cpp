@@ -1,8 +1,8 @@
 #include <iostream>
 #include <memory>
 
-#include "user.hpp"
 #include "network.hpp"
+#include "network_user.hpp"
 
 using namespace std;
 
@@ -45,7 +45,7 @@ int main() {
   Network network(bus);
 
   UserLogin luke_login = "Luke", darth_vader_login = "Darth Vader", leia_login = "Leia";
-  User luke(luke_login), darth_vader(darth_vader_login), leia(leia_login);
+  NetworkUser luke(luke_login, network), darth_vader(darth_vader_login, network), leia(leia_login, network);
 
   network.register_user(luke.login());
   network.register_user(darth_vader.login());
@@ -54,13 +54,13 @@ int main() {
 
   print_network_stat(cout, network);
 
-  network.subscribe(luke_login, darth_vader_login);
-  network.process_message(Message{.from = darth_vader_login, .to = luke_login, .text = "Luke! I'm your father!"});
+  luke.subscribe(darth_vader_login);
+  darth_vader.send_message(luke_login, "Luke! I'm your father!");
 
-  network.subscribe(darth_vader_login, luke_login);
-  network.process_message(Message{.from = luke_login, .to = darth_vader_login, .text = "NOOOO!"});
+  darth_vader.subscribe(luke_login);
+  luke.send_message(darth_vader_login, "NOOOO!");
 
-  for(const auto& user : {darth_vader, luke, leia}) {
+  for (const auto& user : {darth_vader, luke, leia}) {
     print_user_feed(cout, user);
     cout << "\n";
   }
@@ -70,10 +70,10 @@ int main() {
 
   print_network_stat(cout, network);
 
-  network.subscribe(leia_login, luke_login);
-  network.process_message(Message{.from = luke_login, .to = leia_login, .text = "I'm gonna defeat my father!"});
+  leia.subscribe(luke_login);
+  luke.send_message(leia_login, "I'm gonna defeat my father!");
 
-  for(const auto& user : {darth_vader, luke, leia}) {
+  for (const auto& user : {darth_vader, luke, leia}) {
     print_user_feed(cout, user);
     cout << "\n";
   }
