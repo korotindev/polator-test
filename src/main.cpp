@@ -20,19 +20,56 @@ namespace {
     out << "connected users: \n";
     print_users(out, net.connected_users());
   }
+
+  void print_user_feed(ostream& out, const User& user) {
+    out << user.login() << "'s feed:\n";
+    for (const auto& msg : user.message_feed()) {
+      out << msg.to_string() << "\n";
+    }
+  }
+
+  void print_network_stat(ostream& out, const Network& network) {
+    print_registered(out, network);
+    out << "\n";
+    print_connected(out, network);
+    out << "\n";
+  }
 }  // namespace
 
 int main() {
-  User luke("Luke"), darth_vader("Darth Vader");
+  User::Login luke_login = "Luke", darth_vader_login = "Darth Vader", leia_login = "Leia";
+  User luke(luke_login), darth_vader(darth_vader_login), leia(leia_login);
   Network network;
 
   network.register_user(luke);
+  network.register_user(darth_vader);
   network.connect_user(darth_vader);
 
-  print_registered(cout, network);
-  cout << "\n";
-  print_connected(cout, network);
-  cout << "\n";
+  print_network_stat(cout, network);
+
+  network.create_subscription(luke, darth_vader);
+  network.process_message(Message{.from = darth_vader_login, .to = luke_login, .text = "Luke! I'm your father!"});
+
+  network.create_subscription(darth_vader, luke);
+  network.process_message(Message{.from = luke_login, .to = darth_vader_login, .text = "NOOOO!"});
+
+  for(const auto& user : {darth_vader, luke, leia}) {
+    print_user_feed(cout, user);
+    cout << "\n";
+  }
+
+  network.register_user(leia);
+  network.connect_user(leia);
+
+  print_network_stat(cout, network);
+
+  network.create_subscription(leia, luke);
+  network.process_message(Message{.from = luke_login, .to = leia_login, .text = "I'm gonna defeat my father!"});
+
+  for(const auto& user : {darth_vader, luke, leia}) {
+    print_user_feed(cout, user);
+    cout << "\n";
+  }
 
   return 0;
 }
