@@ -30,7 +30,9 @@ int main() {
   network.connect_user(darth_vader);
 
   print_registered(cout, network);
+  cout << "\n";
   print_connected(cout, network);
+  cout << "\n";
 
   return 0;
 }
