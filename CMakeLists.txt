@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16.3)
-project(c-plus-plus-belts VERSION 0.1.0 LANGUAGES CXX)
+project(polator_test VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
