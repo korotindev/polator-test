@@ -1,5 +1,7 @@
 #pragma once
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -14,33 +16,62 @@ class NetworkServerUserStorage {
 
   using Storage = std::unordered_map<UserLogin, Info>;
 
-  inline bool is_registered(const UserLogin& login) const { return store_.find(login) != store_.end(); }
+  inline bool is_registered(const UserLogin& login) const {
+    std::shared_lock lock(mutex_);
+    return store_.find(login) != store_.end();
+  }
 
   inline bool is_connected(const UserLogin& login) const {
+    std::shared_lock lock(mutex_);
     if (auto it = store_.find(login); it != store_.end()) {
       return it->second.connected;
     }
     return false;
   }
 
-  inline void add(UserLogin login) { store_[std::move(login)] = Info{}; }
+  inline void add(UserLogin login) {
+    std::unique_lock lock(mutex_);
+    store_[std::move(login)] = Info{};
+  }
 
-  inline void connect(const UserLogin& login) { store_.at(login).connected = true; }
+  inline void connect(const UserLogin& login) {
+    std::unique_lock lock(mutex_);
+    store_.at(login).connected = true;
+  }
 
   inline void subscribe(UserLogin follower, const UserLogin& target) {
+    std::unique_lock lock(mutex_);
     store_.at(target).followers.insert(std::move(follower));
   }
 
   inline bool has_follower(const UserLogin& target, const UserLogin& follower) {
+    std::shared_lock lock(mutex_);
     return store_.at(target).followers.count(follower) > 0;
   }
 
-  Storage::const_iterator begin() const { return store_.begin(); }
+  inline UserList registered_users() const {
+    std::shared_lock lock(mutex_);
+    UserList users;
+    for (const auto& [login, _] : store_) {
+      users.push_back(login);
+    }
+    return users;
+  }
 
-  Storage::const_iterator end() const { return store_.end(); }
+  inline UserList connected_users() const {
+    std::shared_lock lock(mutex_);
+    UserList users;
+    for (const auto& [login, info] : store_) {
+      if (info.connected) {
+        users.push_back(login);
+      }
+    }
+    return users;
+  }
 
  private:
   Storage store_;
+  mutable std::shared_mutex mutex_;
 };
 
 class NetworkServer {
@@ -60,7 +91,7 @@ class NetworkServer {
   }
 
   void validate_message(const Message& msg) {
-    if(!user_store_.has_follower(msg.from, msg.to)) {
+    if (!user_store_.has_follower(msg.from, msg.to)) {
       throw NetworkErrors::SubscriptionNotFoundError(msg.to + " not a follower of " + msg.from);
     }
   }
@@ -93,21 +124,7 @@ class NetworkServer {
     bus_->receive_message(msg.from, msg);
   }
 
-  inline UserList registered_users() const {
-    UserList users;
-    for (const auto& [login, _] : user_store_) {
-      users.push_back(login);
-    }
-    return users;
-  }
+  inline UserList registered_users() const { return user_store_.registered_users(); }
 
-  inline UserList connected_users() const {
-    UserList users;
-    for (const auto& [login, info] : user_store_) {
-      if (info.connected) {
-        users.push_back(login);
-      }
-    }
-    return users;
-  }
+  inline UserList connected_users() const { return user_store_.connected_users(); }
 };
