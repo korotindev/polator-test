@@ -14,8 +14,6 @@ class NetworkServerUserStorage {
     bool connected = false;
   };
 
-  using Storage = std::unordered_map<UserLogin, Info>;
-
   inline bool is_registered(const UserLogin& login) const {
     std::shared_lock lock(mutex_);
     return store_.find(login) != store_.end();
@@ -70,7 +68,7 @@ class NetworkServerUserStorage {
   }
 
  private:
-  Storage store_;
+  std::unordered_map<UserLogin, Info> store_;
   mutable std::shared_mutex mutex_;
 };
 
