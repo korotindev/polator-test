@@ -44,6 +44,7 @@ int main() {
   network.register_user(luke);
   network.register_user(darth_vader);
   network.connect_user(darth_vader);
+  network.connect_user(luke);
 
   print_network_stat(cout, network);
 
