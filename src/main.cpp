@@ -1,7 +1,10 @@
 #include <iostream>
+#include <memory>
 
-#include "network.hpp"
 #include "user.hpp"
+#include "network.hpp"
+#include "network_server.hpp"
+#include "network_connection.hpp"
 
 using namespace std;
 
@@ -37,9 +40,12 @@ namespace {
 }  // namespace
 
 int main() {
+  NetworkServer remote_server;
+  auto connection = make_unique<DirectCallNetworkConnection>(remote_server);
+  Network network(move(connection));
+
   User::Login luke_login = "Luke", darth_vader_login = "Darth Vader", leia_login = "Leia";
   User luke(luke_login), darth_vader(darth_vader_login), leia(leia_login);
-  Network network;
 
   network.register_user(luke);
   network.register_user(darth_vader);
